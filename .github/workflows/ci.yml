@@ -1,0 +1,56 @@
+# Reusable CI workflow for AI-Company project templates.
+# Copy this into each template's .github/workflows/ci.yml (or `include:` it).
+# Triggers on push/PR to main; lints, tests, and builds.
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Lint (syntax + basic checks)
+        run: |
+          python -m py_compile $(find . -name "*.py" -not -path "./.venv/*")
+          python -m compileall -q .
+
+      - name: Run tests
+        env:
+          # AI is disabled in CI by default — tests must pass offline.
+          AI_ENABLED: "false"
+        run: |
+          pytest -q
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build artifact (zip source for handoff)
+        run: |
+          zip -r build-${{ github.sha }}.zip . -x "*.git*" "venv/*" "__pycache__/*"
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ github.sha }}
+          path: build-${{ github.sha }}.zip
